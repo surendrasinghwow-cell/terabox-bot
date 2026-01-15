@@ -1,5 +1,5 @@
 # TeraBox Video Downloader Telegram Bot
-# Using PlayTerabox API for extraction
+# Using ytshorts.savetube.me API (from working r0ld3x bot)
 
 from flask import Flask, request, jsonify
 import requests
@@ -10,14 +10,11 @@ import os
 
 app = Flask(__name__)
 
-# Bot Token
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8481194301:AAHPoP38OxzK1mXpXjnNzmK8J_6DflgVurs")
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-# Webhook URL
 WEBHOOK_BASE = os.environ.get("RENDER_EXTERNAL_URL", "https://terabox-bot-ynxr.onrender.com")
 
-TERABOX_DOMAINS = ['terabox.com', 'teraboxapp.com', '1024terabox.com', '1024tera.com', '4funbox.com', 'mirrobox.com']
+TERABOX_DOMAINS = ['terabox.com', 'teraboxapp.com', '1024terabox.com', '1024tera.com', '4funbox.com', 'mirrobox.com', 'nephobox.com', 'freeterabox.com', 'momerybox.com', 'tibibox.com']
 
 
 def send_message(chat_id, text, reply_markup=None):
@@ -60,9 +57,20 @@ def get_surl(url):
         return None
 
 
+def find_between(data, first, last):
+    try:
+        start = data.index(first) + len(first)
+        end = data.index(last, start)
+        return data[start:end]
+    except ValueError:
+        return None
+
+
 def format_size(size_bytes):
     if not size_bytes:
         return None
+    if isinstance(size_bytes, str):
+        return size_bytes
     size_bytes = int(size_bytes)
     for unit in ['B', 'KB', 'MB', 'GB']:
         if size_bytes < 1024:
@@ -71,144 +79,113 @@ def format_size(size_bytes):
     return f"{size_bytes:.2f} TB"
 
 
-def try_playterabox_api(url):
-    """Try using playterabox.com API."""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Origin': 'https://playterabox.com',
-            'Referer': 'https://playterabox.com/',
-        }
-        
-        # Try their API endpoint
-        api_url = "https://playterabox.com/api/fetch"
-        resp = requests.post(api_url, json={"url": url}, headers=headers, timeout=30)
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get('success') or data.get('download_url') or data.get('link'):
-                return {
-                    'success': True,
-                    'download_link': data.get('download_url') or data.get('link') or data.get('url'),
-                    'file_name': data.get('filename') or data.get('name') or 'Video',
-                    'size': data.get('size'),
-                    'thumbnail': data.get('thumbnail') or data.get('thumb'),
-                    'source': 'playterabox'
-                }
-    except Exception as e:
-        pass
-    return None
-
-
-def try_terabox_player_api(url):
-    """Try terabox player API."""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json, text/plain, */*',
-        }
-        
-        api_url = f"https://teraboxplayer.com/api/download?url={url}"
-        resp = requests.get(api_url, headers=headers, timeout=30)
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get('success') and data.get('data'):
-                file_data = data['data']
-                return {
-                    'success': True,
-                    'download_link': file_data.get('download_url') or file_data.get('link'),
-                    'file_name': file_data.get('filename') or file_data.get('name') or 'Video',
-                    'size': file_data.get('size'),
-                    'thumbnail': file_data.get('thumbnail'),
-                    'source': 'teraboxplayer'
-                }
-    except:
-        pass
-    return None
-
-
-def try_terabox_dl_api(url):
-    """Try terabox-dl API."""
-    try:
-        surl = get_surl(url)
-        if not surl:
-            return None
-            
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        }
-        
-        api_url = f"https://terabox-dl.vercel.app/api?url={url}"
-        resp = requests.get(api_url, headers=headers, timeout=30)
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get('ok') or data.get('success'):
-                return {
-                    'success': True,
-                    'download_link': data.get('download_link') or data.get('dlink') or data.get('url'),
-                    'file_name': data.get('filename') or data.get('name') or 'Video',
-                    'size': data.get('size'),
-                    'thumbnail': data.get('thumb'),
-                    'source': 'terabox-dl'
-                }
-    except:
-        pass
-    return None
-
-
-def try_savefrom_api(url):
-    """Try savefrom-style API."""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json',
-            'Content-Type': 'application/x-www-form-urlencoded',
-        }
-        
-        api_url = "https://getvideo.wiki/api/terabox"
-        resp = requests.post(api_url, data={"url": url}, headers=headers, timeout=30)
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get('success') or data.get('download'):
-                return {
-                    'success': True,
-                    'download_link': data.get('download') or data.get('link'),
-                    'file_name': data.get('title') or data.get('filename') or 'Video',
-                    'thumbnail': data.get('thumbnail'),
-                    'source': 'getvideo'
-                }
-    except:
-        pass
-    return None
-
-
 def extract_terabox(url):
-    """Try all extraction methods."""
+    """Extract using ytshorts.savetube.me API (from working bot)."""
     
-    apis = [
-        try_playterabox_api,
-        try_terabox_player_api,
-        try_terabox_dl_api,
-        try_savefrom_api,
-    ]
+    debug = {'url': url, 'steps': []}
     
-    for api_func in apis:
+    try:
+        # Normalize URL domain to 1024terabox.com
+        netloc = urlparse(url).netloc
+        normalized_url = url.replace(netloc, "1024terabox.com")
+        
+        # Step 1: Get thumbnail from page
+        default_thumbnail = None
         try:
-            result = api_func(url)
-            if result and result.get('success') and result.get('download_link'):
-                return result
+            page_resp = requests.get(url, timeout=15)
+            if page_resp.status_code == 200:
+                default_thumbnail = find_between(page_resp.text, 'og:image" content="', '"')
         except:
-            continue
-    
-    return {
-        'success': False,
-        'error': 'Could not extract download link. Try again later or check if the link is valid.',
-    }
+            pass
+        
+        debug['steps'].append({'step': 'page', 'thumbnail': bool(default_thumbnail)})
+        
+        # Step 2: Use ytshorts.savetube.me API
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Content-Type": "application/json",
+            "Origin": "https://ytshorts.savetube.me",
+            "Alt-Used": "ytshorts.savetube.me",
+            "Referer": "https://ytshorts.savetube.me/",
+        }
+        
+        api_response = requests.post(
+            "https://ytshorts.savetube.me/api/v1/terabox-downloader",
+            headers=headers,
+            json={"url": normalized_url},
+            timeout=30
+        )
+        
+        step2 = {'step': 'api', 'status': api_response.status_code}
+        
+        if api_response.status_code != 200:
+            step2['error'] = f'API status: {api_response.status_code}'
+            debug['steps'].append(step2)
+            return {'success': False, 'error': f'API error: {api_response.status_code}', 'debug': debug}
+        
+        data = api_response.json()
+        step2['response_keys'] = list(data.keys())
+        responses = data.get("response", [])
+        
+        if not responses:
+            step2['error'] = 'No response data'
+            debug['steps'].append(step2)
+            return {'success': False, 'error': 'No data from API', 'debug': debug}
+        
+        resolutions = responses[0].get("resolutions", {})
+        step2['resolutions'] = list(resolutions.keys()) if resolutions else []
+        debug['steps'].append(step2)
+        
+        if not resolutions:
+            return {'success': False, 'error': 'No resolutions found', 'debug': debug}
+        
+        # Get links
+        fast_download = resolutions.get("Fast Download", "")
+        hd_video = resolutions.get("HD Video", "")
+        
+        if not (hd_video or fast_download):
+            return {'success': False, 'error': 'No download links found', 'debug': debug}
+        
+        # Get file info from video link
+        file_name = None
+        content_length = None
+        
+        try:
+            head_resp = requests.head(hd_video or fast_download, timeout=10)
+            content_length = head_resp.headers.get("Content-Length")
+            
+            content_disposition = head_resp.headers.get("content-disposition", "")
+            if content_disposition:
+                fname_match = re.findall('filename="(.+)"', content_disposition)
+                if fname_match:
+                    file_name = fname_match[0]
+        except:
+            pass
+        
+        # Get direct link
+        direct_link = None
+        if fast_download:
+            try:
+                redirect_resp = requests.head(fast_download, timeout=10, allow_redirects=False)
+                direct_link = redirect_resp.headers.get("location", fast_download)
+            except:
+                direct_link = fast_download
+        
+        return {
+            'success': True,
+            'file_name': file_name or 'TeraBox Video',
+            'download_link': hd_video,
+            'fast_download': direct_link or fast_download,
+            'thumbnail': default_thumbnail,
+            'size': format_size(int(content_length)) if content_length else None,
+            'size_bytes': int(content_length) if content_length else None,
+            'debug': debug
+        }
+        
+    except Exception as e:
+        return {'success': False, 'error': str(e), 'debug': debug}
 
 
 @app.route('/')
@@ -218,7 +195,7 @@ def home():
     <head><title>TeraBox Bot</title></head>
     <body style="font-family:Arial;padding:50px;text-align:center;background:#1a1a2e;color:white;">
         <h1>🎬 TeraBox Video Downloader</h1>
-        <p style="color:#00ff88;font-size:24px;">✅ Bot is running!</p>
+        <p style="color:#00ff88;font-size:24px;">✅ Bot is running on Render!</p>
         <p><a href="/setwebhook" style="color:#00d4ff;">Setup Webhook</a></p>
         <p><a href="https://t.me/teraboxxdonbot" style="color:#00d4ff;font-size:20px;">Open Bot on Telegram</a></p>
     </body>
@@ -264,29 +241,7 @@ def webhook():
         text = data['message'].get('text', '')
         
         if text == '/start':
-            send_message(chat_id, """
-🎬 *Welcome to TeraBox Video Downloader!*
-
-Send me any TeraBox link and I'll get the download URL!
-
-*Supported:*
-• terabox.com
-• 1024terabox.com
-• 1024tera.com
-
-Just paste your link! 🚀
-            """)
-            return 'ok'
-        
-        if text == '/help':
-            send_message(chat_id, """
-📖 *Help*
-
-Just send a TeraBox link!
-
-*Example:*
-`https://1024tera.com/wap/share/filelist?surl=xxxxx`
-            """)
+            send_message(chat_id, "🎬 *TeraBox Video Downloader!*\n\nSend me any TeraBox link!")
             return 'ok'
         
         urls = re.findall(r'https?://[^\s]+', text)
@@ -297,23 +252,30 @@ Just send a TeraBox link!
             return 'ok'
         
         for url in terabox_urls:
-            send_message(chat_id, "⏳ Processing your link...")
+            send_message(chat_id, "⏳ Processing...")
             result = extract_terabox(url)
             
             if result['success']:
-                size_text = f"\n📊 Size: {format_size(result.get('size'))}" if result.get('size') else ""
-                msg = f"✅ *Video Found!*\n\n📁 `{result.get('file_name', 'Video')}`{size_text}\n\n👇 Click to download:"
-                markup = {"inline_keyboard": [[{"text": "📥 Download Video", "url": result['download_link']}]]}
+                size_text = f"\n📊 Size: {result.get('size')}" if result.get('size') else ""
+                msg = f"✅ *Video Found!*\n\n📁 `{result.get('file_name', 'Video')}`{size_text}\n\n👇 Download:"
+                
+                buttons = []
+                if result.get('fast_download'):
+                    buttons.append([{"text": "⚡ Fast Download", "url": result['fast_download']}])
+                if result.get('download_link'):
+                    buttons.append([{"text": "🎬 HD Video", "url": result['download_link']}])
+                
+                markup = {"inline_keyboard": buttons}
                 
                 if result.get('thumbnail'):
                     send_photo(chat_id, result['thumbnail'], msg, markup)
                 else:
                     send_message(chat_id, msg, markup)
             else:
-                send_message(chat_id, f"❌ *Failed*\n\n{result.get('error')}")
+                send_message(chat_id, f"❌ Failed: {result.get('error')}")
         
         return 'ok'
-    except Exception as e:
+    except:
         return 'ok'
 
 
