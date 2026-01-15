@@ -1,5 +1,5 @@
 # TeraBox Video Downloader Telegram Bot
-# Render.com Deployment
+# Using PlayTerabox API for extraction
 
 from flask import Flask, request, jsonify
 import requests
@@ -10,18 +10,14 @@ import os
 
 app = Flask(__name__)
 
-# Bot Token - can also use environment variable
+# Bot Token
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8481194301:AAHPoP38OxzK1mXpXjnNzmK8J_6DflgVurs")
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# TeraBox Cookie - can also use environment variable
-NDUS_COOKIE = os.environ.get("NDUS_COOKIE", "YvAFiL8peHuihk_jSkmddTzXJ1GZalDIQV64qeuX")
-COOKIE_STRING = f"ndus={NDUS_COOKIE}; lang=en"
+# Webhook URL
+WEBHOOK_BASE = os.environ.get("RENDER_EXTERNAL_URL", "https://terabox-bot-ynxr.onrender.com")
 
-# Webhook URL - UPDATE THIS after Render deployment
-WEBHOOK_BASE = os.environ.get("RENDER_EXTERNAL_URL", "https://your-app.onrender.com")
-
-TERABOX_DOMAINS = ['terabox.com', 'teraboxapp.com', '1024terabox.com', '1024tera.com', '4funbox.com']
+TERABOX_DOMAINS = ['terabox.com', 'teraboxapp.com', '1024terabox.com', '1024tera.com', '4funbox.com', 'mirrobox.com']
 
 
 def send_message(chat_id, text, reply_markup=None):
@@ -75,52 +71,144 @@ def format_size(size_bytes):
     return f"{size_bytes:.2f} TB"
 
 
+def try_playterabox_api(url):
+    """Try using playterabox.com API."""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Origin': 'https://playterabox.com',
+            'Referer': 'https://playterabox.com/',
+        }
+        
+        # Try their API endpoint
+        api_url = "https://playterabox.com/api/fetch"
+        resp = requests.post(api_url, json={"url": url}, headers=headers, timeout=30)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('success') or data.get('download_url') or data.get('link'):
+                return {
+                    'success': True,
+                    'download_link': data.get('download_url') or data.get('link') or data.get('url'),
+                    'file_name': data.get('filename') or data.get('name') or 'Video',
+                    'size': data.get('size'),
+                    'thumbnail': data.get('thumbnail') or data.get('thumb'),
+                    'source': 'playterabox'
+                }
+    except Exception as e:
+        pass
+    return None
+
+
+def try_terabox_player_api(url):
+    """Try terabox player API."""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json, text/plain, */*',
+        }
+        
+        api_url = f"https://teraboxplayer.com/api/download?url={url}"
+        resp = requests.get(api_url, headers=headers, timeout=30)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('success') and data.get('data'):
+                file_data = data['data']
+                return {
+                    'success': True,
+                    'download_link': file_data.get('download_url') or file_data.get('link'),
+                    'file_name': file_data.get('filename') or file_data.get('name') or 'Video',
+                    'size': file_data.get('size'),
+                    'thumbnail': file_data.get('thumbnail'),
+                    'source': 'teraboxplayer'
+                }
+    except:
+        pass
+    return None
+
+
+def try_terabox_dl_api(url):
+    """Try terabox-dl API."""
+    try:
+        surl = get_surl(url)
+        if not surl:
+            return None
+            
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        }
+        
+        api_url = f"https://terabox-dl.vercel.app/api?url={url}"
+        resp = requests.get(api_url, headers=headers, timeout=30)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('ok') or data.get('success'):
+                return {
+                    'success': True,
+                    'download_link': data.get('download_link') or data.get('dlink') or data.get('url'),
+                    'file_name': data.get('filename') or data.get('name') or 'Video',
+                    'size': data.get('size'),
+                    'thumbnail': data.get('thumb'),
+                    'source': 'terabox-dl'
+                }
+    except:
+        pass
+    return None
+
+
+def try_savefrom_api(url):
+    """Try savefrom-style API."""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        }
+        
+        api_url = "https://getvideo.wiki/api/terabox"
+        resp = requests.post(api_url, data={"url": url}, headers=headers, timeout=30)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('success') or data.get('download'):
+                return {
+                    'success': True,
+                    'download_link': data.get('download') or data.get('link'),
+                    'file_name': data.get('title') or data.get('filename') or 'Video',
+                    'thumbnail': data.get('thumbnail'),
+                    'source': 'getvideo'
+                }
+    except:
+        pass
+    return None
+
+
 def extract_terabox(url):
-    """Extract download link from TeraBox."""
+    """Try all extraction methods."""
     
-    surl = get_surl(url)
-    if not surl:
-        return {'success': False, 'error': 'Invalid URL'}
+    apis = [
+        try_playterabox_api,
+        try_terabox_player_api,
+        try_terabox_dl_api,
+        try_savefrom_api,
+    ]
     
-    session = requests.Session()
-    
-    domains = ['dm.1024terabox.com', 'www.1024terabox.com', 'www.terabox.com', 'www.1024tera.com']
-    
-    for domain in domains:
+    for api_func in apis:
         try:
-            headers = {
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Cookie': COOKIE_STRING,
-                'Host': domain,
-                'Origin': f'https://{domain}',
-                'Referer': f'https://{domain}/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            }
-            
-            api_url = f"https://{domain}/api/shorturlinfo?shorturl={surl}&root=1"
-            resp = session.get(api_url, headers=headers, timeout=15)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                
-                if data.get('errno') == 0 and data.get('list'):
-                    file_info = data['list'][0]
-                    dlink = file_info.get('dlink')
-                    
-                    if dlink:
-                        return {
-                            'success': True,
-                            'download_link': dlink,
-                            'file_name': file_info.get('server_filename', 'Video'),
-                            'size': file_info.get('size'),
-                            'thumbnail': file_info.get('thumbs', {}).get('url3') if isinstance(file_info.get('thumbs'), dict) else None
-                        }
-                        
-        except Exception as e:
+            result = api_func(url)
+            if result and result.get('success') and result.get('download_link'):
+                return result
+        except:
             continue
     
-    return {'success': False, 'error': 'Could not extract download link'}
+    return {
+        'success': False,
+        'error': 'Could not extract download link. Try again later or check if the link is valid.',
+    }
 
 
 @app.route('/')
@@ -130,7 +218,7 @@ def home():
     <head><title>TeraBox Bot</title></head>
     <body style="font-family:Arial;padding:50px;text-align:center;background:#1a1a2e;color:white;">
         <h1>🎬 TeraBox Video Downloader</h1>
-        <p style="color:#00ff88;font-size:24px;">✅ Bot is running on Render!</p>
+        <p style="color:#00ff88;font-size:24px;">✅ Bot is running!</p>
         <p><a href="/setwebhook" style="color:#00d4ff;">Setup Webhook</a></p>
         <p><a href="https://t.me/teraboxxdonbot" style="color:#00d4ff;font-size:20px;">Open Bot on Telegram</a></p>
     </body>
